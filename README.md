@@ -1,11 +1,11 @@
-# SIEM Live Case Lab — Elastic SIEM with Insider Threat Detection
-### Build. Simulate. Detect.
+Building a Single-Node SIEM Lab Setup with Industry Verified Elastic (ELK) Stack with Threat Detection Rules
 
 ---
 
 ## Project Overview
 
-This project builds a fully functional Security Information and Event Management (SIEM) lab on a single Kali Linux VM. It simulates a corporate environment with 7 employees across 4 departments, generates realistic enterprise telemetry, ships logs via Filebeat into Elasticsearch, and detects attack patterns using Elastic SIEM detection rules in Kibana.
+This project builds a fully functional Security Information and Event Management (SIEM) lab on a single Kali Linux VM. 
+It simulates a corporate environment with 7 employees across 4 departments, generates realistic enterprise telemetry, ships logs via Filebeat into Elasticsearch, and detects attack patterns using Elastic SIEM detection rules in Kibana.
 
 **Stack:**
 ```
@@ -14,15 +14,14 @@ log_gen.py → events_YYYY-MM-DD.jsonl → Filebeat → Elasticsearch → Kibana
 
 **Attack types simulated:**
 - Brute Force Login (external attacker, random public IP)
-- Insider Threat (legitimate employee exfiltrating Finance data)
-- Privilege Escalation (sudo abuse + rogue user creation)
+- Insider Threat (legitimate employee stealing Finance data)
+- Privilege Escalation (sudo abuse + user creation)
 
 **MITRE ATT&CK mapping:**
 | Attack | Technique |
 |--------|-----------|
 | Brute Force | T1110 |
 | Insider Threat | T1078 |
-| Data Exfiltration | T1041 |
 | Privilege Escalation | T1548 |
 
 ---
@@ -44,7 +43,7 @@ log_gen.py → events_YYYY-MM-DD.jsonl → Filebeat → Elasticsearch → Kibana
 ```
 ~/siem/
 ├── log_gen.py          # Log generator — simulates corporate activity + attacks
-├── log_collector.py    # Optional SQLite collector (for local analysis)
+├── log_collector.py    # Optional SQLite collector
 ├── logs/
 │   └── events_YYYY-MM-DD.jsonl   # Daily rotating log files
 └── README.md
