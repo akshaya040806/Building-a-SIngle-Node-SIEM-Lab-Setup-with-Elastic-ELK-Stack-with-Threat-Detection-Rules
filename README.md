@@ -80,7 +80,7 @@ sudo apt install elasticsearch -y
 sudo nano /etc/elasticsearch/elasticsearch.yml
 ```
 
-Add at the bottom:
+Add at the bottom (Added ML to get more storage for Kibana)
 ```yaml
 cluster.name: siem-lab
 node.name: kali-node-1
@@ -88,12 +88,12 @@ discovery.type: single-node
 xpack.ml.enabled: false
 ```
 
-Also find and comment out this line:
+If you have something like this in the original file, find and comment out this line:
 ```yaml
 # cluster.initial_master_nodes: ["kali"]
 ```
 
-### Step 5 — Reduce heap size (important for 6GB VM)
+### Step 5 — Reduce heap size (important for 6GB VM, if you have more then skip this process and put Xms1g)
 ```bash
 sudo nano /etc/elasticsearch/jvm.options.d/heap.options
 ```
@@ -140,7 +140,7 @@ elasticsearch.hosts: ["https://localhost:9200"]
 elasticsearch.ssl.verificationMode: "none"
 ```
 
-### Step 10 — Generate encryption keys
+### Step 10 — Generate encryption keys to prevent it from session error
 ```bash
 sudo /usr/share/kibana/bin/kibana-encryption-keys generate
 ```
@@ -157,7 +157,7 @@ xpack.security.encryptionKey: <generated>
 sudo /usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s kibana
 ```
 
-Copy the token. **Tokens expire in 30 minutes** — if it expires, generate a new one.
+Copy the token. **Tokens expire in 30 minutes** — if it expires, generate a new one suing the below command (I faced this problem)
 
 ### Step 12 — Configure Kibana with token
 ```bash
@@ -165,7 +165,7 @@ sudo systemctl stop kibana
 sudo /usr/share/kibana/bin/kibana-setup --enrollment-token PASTE_TOKEN_HERE
 ```
 
-Expected output: `✔ Kibana configured successfully.`
+Expected output: `Kibana configured successfully.`
 
 ### Step 13 — Start Kibana
 ```bash
@@ -184,7 +184,7 @@ Login: `elastic` / `YOUR_PASSWORD`
 
 ---
 
-## Phase 3 — Install and Configure Filebeat
+## Phase 3 — Install and Configure Filebeat (I had a timestamp issue because of my real timestamp and added a processors block there. IF you are using a simulated timestamp then skip the 'processor' block.
 
 ### Step 14 — Install
 ```bash
@@ -252,10 +252,10 @@ cd /home/kali/siem
 python3 log_gen.py
 ```
 
-The generator simulates a full corporate workday (08:00–18:30). It produces:
+The generator simulates a full corporate workday (08:00–18:30) according to my log generator. It produces:
 - Parallel user sessions with realistic Markov-chain behaviour
 - Idle gaps for meetings and lunch breaks
-- Attack chains every 3 sessions in round-robin rotation
+- Attack chains every 3 sessions in round-robin. But I have just done Brute Force as of now. You can try more.
 
 Attack rotation order:
 ```
@@ -307,8 +307,8 @@ Go to: Kibana → ☰ Menu → Security → Rules → Detection Rules (SIEM)
 - Threshold count: `5`
 - Name: `Brute Force Login Detection`
 - Severity: `High`
-- Risk score: `73`
-- Schedule: every `5 minutes`
+- Risk score: `75`
+- Schedule: every `2 minutes`
 
 ---
 
@@ -323,21 +323,6 @@ event_type: "file_access" AND details.file: ("salary.xlsx" OR "budget.xlsx" OR "
 - Name: `Insider Threat - Unauthorised Finance File Access`
 - Severity: `High`
 - Risk score: `75`
-- Schedule: every `5 minutes`
-
----
-
-### Rule 3 — Data Exfiltration
-
-- Type: **Query**
-- Index patterns: `siem-events`
-- Custom query:
-```
-event_type: "file_transfer" AND details.destination: "external_storage"
-```
-- Name: `Data Exfiltration - External File Transfer`
-- Severity: `Critical`
-- Risk score: `90`
 - Schedule: every `5 minutes`
 
 ---
@@ -357,25 +342,6 @@ sequence by session_id [
 - Name: `Privilege Escalation - Sudo to User Creation`
 - Severity: `Critical`
 - Risk score: `90`
-- Schedule: every `5 minutes`
-
----
-
-### Rule 5 — Brute Force Success (Account Compromised)
-
-- Type: **EQL**
-- Index patterns: `siem-events`
-- EQL query:
-```eql
-sequence by session_id with maxspan=30m [
-  any where event_type == "login_failure"
-] [
-  any where event_type == "login_success" and attack_type == "brute_force"
-]
-```
-- Name: `Brute Force Success - Account Compromised`
-- Severity: `Critical`
-- Risk score: `95`
 - Schedule: every `5 minutes`
 
 ---
@@ -410,15 +376,6 @@ Set:
 -Xmx512m
 ```
 
-**Fix 3 — Unknown setting error:**
-Check the exact error:
-```bash
-sudo -u elasticsearch /usr/share/elasticsearch/bin/elasticsearch 2>&1 | tail -20
-```
-Remove any invalid settings from `elasticsearch.yml`.
-
----
-
 ### Kibana takes too long to start
 
 This is normal on first start only. Kibana creates internal Elasticsearch indexes for 172 plugins. On a 6GB VM this takes 3-5 minutes.
@@ -451,25 +408,6 @@ sudo systemctl start kibana
 
 ---
 
-### Kibana — Failed to retrieve detection engine privileges
-
-**Symptom:**
-```
-Unable to create actions client because the Encrypted Saved Objects plugin is missing encryption key
-```
-
-**Fix:**
-```bash
-sudo /usr/share/kibana/bin/kibana-encryption-keys generate
-```
-
-Add all three output lines to `/etc/kibana/kibana.yml`, then:
-```bash
-sudo systemctl restart kibana
-```
-
----
-
 ### Filebeat events being dropped (count stays 0)
 
 **Symptom:**
@@ -498,18 +436,7 @@ sudo systemctl start filebeat
 
 ---
 
-### Detection rule warning — index not found
-
-**Symptom:**
-```
-No index matching ["siem_events"] was found
-```
-
-**Fix:** The index name uses a hyphen not underscore. Edit the rule and change `siem_events` to `siem-events`.
-
----
-
-### @timestamp shows ingestion time instead of simulated time
+### @timestamp shows real time instead of simulated time
 
 **Symptom:** All events show the same real timestamp instead of simulated 08:00-18:00 times.
 
@@ -530,35 +457,6 @@ sudo systemctl stop filebeat
 sudo rm -rf /var/lib/filebeat/registry
 sudo systemctl start filebeat
 ```
-
----
-
-### Generator only shows brute force attacks
-
-**Symptom:** Only `[ATTACK] brute_force` appears, never insider or priv_esc.
-
-**Cause:** The old random attack selection always fell back to brute force when no active sessions existed.
-
-**Fix:** The updated `log_gen.py` uses a round-robin cycle:
-```python
-attack_cycle = ["brute_force", "insider", "priv_esc"]
-```
-Download the latest version and replace your file.
-
----
-
-### Generator shows QUIET spam
-
-**Symptom:**
-```
-[QUIET ] 18:50 — no users in working hours
-[QUIET ] 18:50 — no users in working hours
-...
-```
-
-**Cause:** The simulated clock reached end of workday (18:30). All users have departed.
-
-**Fix:** Stop the generator with `Ctrl+C` and restart it. The sim clock resets to 08:00 on each run.
 
 ---
 
@@ -624,17 +522,15 @@ sudo systemctl restart elasticsearch kibana filebeat
 
 ---
 
-## What to Say in a Deloitte Interview
+## What to Say in an Interview if you built this fully (Very much needed project on companies like EY, Deloitte, etc)
 
-> "I built a single-node SIEM detection lab on Kali Linux simulating a corporate environment with 7 employees across 4 departments. I wrote a Python log generator that produces realistic enterprise telemetry — parallel sessions using Markov-chain user behaviour, meeting and lunch gaps, and three attack types: brute force, insider threat, and privilege escalation. Logs were shipped in real time via Filebeat into Elasticsearch and visualised in Kibana. I wrote five detection rules using KQL and EQL — including a sequence-based EQL rule that detects privilege escalation by correlating sudo execution with user creation within the same session. All rules are mapped to MITRE ATT&CK techniques T1110, T1078, T1041, and T1548."
-
----
-
-## CV Line
-
-**Detection Engineering Lab — Elastic SIEM**
-Built a threat detection pipeline using Filebeat, Elasticsearch 8.x, and Kibana. Modelled insider threat, brute force, and privilege escalation attack chains with ground-truth labels. Wrote KQL and EQL detection rules mapped to MITRE ATT&CK techniques T1110, T1078, T1041, and T1548. Validated real-time alert firing in Elastic SIEM.
+> "I built a single-node SIEM detection lab on Kali Linux simulating an environment with 7 employees across 4 departments. I wrote a Python log generator that produces realistic enterprise telemetry — parallel sessions using Markov-chain user behaviour, meeting and lunch gaps, and three attack types: brute force, insider threat, and privilege escalation. Logs were sent in real time via Filebeat into Elasticsearch and visualised/detected in Kibana. I wrote <how_many_you_did> detection rule using KQL — including a sequence-based rule that detects brute-force by correlation, analysis and a visual metric. All rules are mapped to MITRE ATT&CK techniques T1110, T1078 and T1548."
 
 ---
 
-*Built on Kali Linux — Elastic Stack 8.19 — Python 3.x*
+## CV
+
+**Building a Single-Node SIEM Lab Setup with Industry Verified Elastic (ELK) Stack with Threat Detection Rules**
+Built a threat detection pipeline using Filebeat, Elasticsearch 8.x, and Kibana. Modelled insider threat, brute force, and privilege escalation attack chains with ground-truth labels. Wrote KQL and EQL detection rules mapped to MITRE ATT&CK techniques T1110, T1078 and T1548. Validated real-time alert firing in Elastic Kibana based SIEM stack.
+
+---
