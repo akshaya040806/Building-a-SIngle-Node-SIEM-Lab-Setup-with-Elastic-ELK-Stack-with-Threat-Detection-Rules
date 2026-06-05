@@ -51,6 +51,8 @@ log_gen.py → events_YYYY-MM-DD.jsonl → Filebeat → Elasticsearch → Kibana
 
 ---
 
+## Phase 0 - Code for log_gen.py. Can use your own realistic log generation by using Markov CHain Behaviorism (ML modelling) and then adding MITRE ATT&CK simulations in between for realism. Also remember one thing. Don't do the mistake I did. Don't use one event as one session. That is inefficient. Use a whole session as a block and generate more parallel blocks like those while executing.
+
 ## Phase 1 — Install Elasticsearch
 
 ### Step 1 — Add Elastic GPG key
